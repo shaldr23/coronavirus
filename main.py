@@ -10,28 +10,41 @@ from scipy.optimize import curve_fit
 
 # ---------- Начальные параметры -------------------------------------
 
-REGION = 'Москва'
+REGION = 'Санкт-Петербург'
+TO_SAVE = False  # сохранять ли данные в excel
 
 # ---------- Функции -------------------------------------------------
 
 def add_stats(df: pd.DataFrame, population):
     """
     Добавление данных в DataFrame S, I, R, Beta, Gamma.
-    Формулы работают, если есть данные для каждого дня в последовательности.
-    Есть данные количества случаев в день (заражений, смертей, выздоровлений)
-    Можно потом улучшить.
+    Данные для каждого дня последовательности не требуются.
+    Нужны лишь кумулятивные данные (заражений, смертей, выздоровлений) и даты.
+    Если в какой-то день количество общих случаев не меняется -
+    эта строчка игнорируется, и дельта t, соответственно, увеличивается.
+    Первая строчка данных в итоге удаляется,
+    т.к. показателей dI, dR, dS для нее нет.
     """
-    df.reset_index(inplace=True)
-    df.index = df.index + 1 # Для нумерации с начала
-    df['time_delta'] = pd.to_datetime(df['Date']).diff()
-    assert all(df['time_delta'].dropna() == pd.Timedelta('1 days')) # удостоверимся, что разница между датами = 1 день
-    df['Removed'] = df['Recovered'] + df['Deaths']
+    df = df[['Date', 'Confirmed', 'Deaths', 'Recovered']]
+    df['Removed'] = df['Deaths'] + df['Recovered']
     df['Infected'] = df['Confirmed'] - df['Removed']
     df['Suspected'] = population - df['Infected'] - df['Removed']
-    df['Gamma'] = (df['Day-Recovered'] + df['Day-Deaths']) / df['Infected']
-    day_infected = df['Day-Confirmed'] - df['Day-Recovered'] - df['Day-Deaths']
-    df['Beta'] = (day_infected + df['Infected'] * df['Gamma']) * population / (df['Infected'] * df['Suspected'])
+    dConfirmed = df['Confirmed'].diff()
+    df = df[dConfirmed != 0]  # Убрали дни, где общее количество случаев не меняется
+    dI = df['Infected'].diff()
+    dR = df['Removed'].diff()
+    dt = pd.to_datetime(df['Date']).diff().dt.days
+    df['Gamma'] = dR / dt / df['Infected']
+    df['Beta'] = (dI / dt + df['Infected'] * df['Gamma']) * population / (df['Infected'] * df['Suspected'])
     df['R_0'] = df['Beta'] / df['Gamma']
+    df = df.iloc[1:]  # удаляется первая строчка с NaN в dI, dR, dS
+    
+    # обновляем индекс, учитывая пропущенные значения
+    index = dt.iloc[1:].cumsum()
+    index = index - index.iloc[0] + 1
+    df.index = index
+    df.index.name = 'index'
+    return df
 
 
 def simulate_dynamic(P: 'population', I: 'infected',
@@ -58,8 +71,12 @@ def simulate_dynamic(P: 'population', I: 'infected',
     return data
 
 
-def func_exp(x, a, b):
+def func_neg_exp(x, a, b):
     return a * np.exp(-b * x)
+
+
+def func_exp(x, a, b, c):
+    return a * np.exp(b * x + c)
 
 
 def func_lin(x, a, b):
@@ -74,13 +91,18 @@ def func_logistic(x, a, b, c):
     return a / (1 + np.exp(-b * (x - c)))
 
 
+def func_polynom_2p(x, a, b, c):
+    return a*x**2 + b*x + c
+
+
 def simulate_graphics(dataset: pd.DataFrame,
                       population,
                       training_range: '(start_index, end_index)',
                       cycles=100,
-                      beta_func=func_exp,
+                      beta_func=func_neg_exp,
                       gamma_func=func_lin,
-                      show_pictures=True):
+                      show_pictures=True,
+                      return_result=False):
     """
     Функция, осуществляющая подбор уравнений для Beta и Gamma,
     использующая функцию simulate_dynamic для симуляции заражения с некоторого
@@ -126,13 +148,14 @@ def simulate_graphics(dataset: pd.DataFrame,
     if show_pictures:
         simulation_x = np.arange(training_range[1] + 1, training_range[1] + 1 + cycles)
         plt.plot(simulation_x, simulated['Infected'], label='Infected simulated')
-        plt.plot(dataset.index, moscow_frame['Infected'], label='Infected real')
+        plt.plot(dataset.index, dataset['Infected'], label='Infected real')
         plt.title(f'Simulation start time={training_range[1] + 1}\n'
                   f'training range={training_range}\n'
                   f'simulated cycles={cycles}')
         plt.legend()
         plt.show()
-    return simulated
+    if return_result:
+        return simulated
 
 
 # %%
@@ -147,11 +170,12 @@ frame = pd.read_csv(os.path.join(source_folder, file_name))
 info_frame = pd.read_csv(os.path.join(source_folder, info_file_name))
 region_frame = frame[frame['Region/City'] == REGION]
 region_population = int(info_frame[info_frame['Region'] == REGION]['Population'])
-add_stats(region_frame, region_population)
-region_frame.to_excel(os.path.join(output_folder, f'{REGION}.xlsx'))
+region_frame = add_stats(region_frame, region_population)
+if TO_SAVE:
+    region_frame.to_excel(os.path.join(output_folder, f'{REGION}.xlsx'))
+simulate_graphics(region_frame, region_population, (1, 90), cycles=15, gamma_func=func_lin)
+# %%
+simulate_graphics(region_frame, region_population, (1, 100), cycles=30, gamma_func=func_lin)
+
 
 # %%
-simulate_graphics(region_frame, region_population, (5, 40), cycles=30, gamma_func=func_lin)
-
-# %%
-simulate_graphics(region_frame, region_population, (5, 50), cycles=30, gamma_func=func_lin)
