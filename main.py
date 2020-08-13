@@ -10,8 +10,8 @@ from scipy.optimize import curve_fit
 
 # ---------- Начальные параметры -------------------------------------
 
-REGION = 'Санкт-Петербург'
-TO_SAVE = False  # сохранять ли данные в excel
+REGION = 'Республика Башкортостан'
+TO_SAVE = True  # сохранять ли данные в excel
 
 # ---------- Функции -------------------------------------------------
 
@@ -73,6 +73,10 @@ def simulate_dynamic(P: 'population', I: 'infected',
 
 def func_neg_exp(x, a, b):
     return a * np.exp(-b * x)
+
+
+def func_neg_exp2(x, a, b, c):
+    return a * np.exp(-b * x + c)
 
 
 def func_exp(x, a, b, c):
@@ -175,7 +179,8 @@ if TO_SAVE:
     region_frame.to_excel(os.path.join(output_folder, f'{REGION}.xlsx'))
 simulate_graphics(region_frame, region_population, (1, 90), cycles=15, gamma_func=func_lin)
 # %%
-simulate_graphics(region_frame, region_population, (1, 100), cycles=30, gamma_func=func_lin)
+simulate_graphics(region_frame, region_population, (1, 50), cycles=30,
+                  beta_func=func_neg_exp, gamma_func=func_lin)
 
 
 # %%
