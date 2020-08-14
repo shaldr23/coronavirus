@@ -15,22 +15,57 @@ TO_SAVE = True  # сохранять ли данные в excel
 
 # ---------- Функции -------------------------------------------------
 
-def add_stats(df: pd.DataFrame, population):
+
+def gradual_change(seq):
+    """
+    Функция, заменяющая в последовательности неизменные значения
+    на меняющиеся: [1, 2, 2, 2, 3] -> [1, 2, 2.33, 2.66, 3]
+    """
+    seq = list(seq)
+    result = seq[:1]
+    processed_vals = []
+    for i in range(1, len(seq)):
+        if seq[i] == seq[i-1]:
+            processed_vals.append(seq[i])
+            if i == len(seq) - 1:
+                result.extend(processed_vals)
+        else:
+            if processed_vals:
+                increment = (seq[i] - processed_vals[0]) / (len(processed_vals) + 1)
+                processed_vals = [num * increment + val for num, val in enumerate(processed_vals, 1)]
+                result.extend(processed_vals)
+                processed_vals = []
+            result.append(seq[i])
+    return result
+
+
+def add_stats(df: pd.DataFrame, population, fill_values=True,
+              gradual_change_vals=True):
     """
     Добавление данных в DataFrame S, I, R, Beta, Gamma.
+    В этой ветке функция берет производную в точке как
+    (следующее значение - предыдущее значение) / 2 дня.
     Данные для каждого дня последовательности не требуются.
     Нужны лишь кумулятивные данные (заражений, смертей, выздоровлений) и даты.
-    Если в какой-то день количество общих случаев не меняется -
-    эта строчка игнорируется, и дельта t, соответственно, увеличивается.
+    Если в какие-то дни количество общих случаев не меняется -
+    Используется функция gradual_change.
     Первая строчка данных в итоге удаляется,
     т.к. показателей dI, dR, dS для нее нет.
     """
     df = df[['Date', 'Confirmed', 'Deaths', 'Recovered']]
+    df['Date'] = pd.to_datetime(df['Date']).dt.date
+    if fill_values:
+        full_dates = pd.date_range(df['Date'].min(), df['Date'].max())
+        full_dates = pd.DataFrame({'Date': full_dates})
+        full_dates['Date'] = full_dates['Date'].dt.date
+        df = full_dates.merge(df, how='left', on='Date')
+        df.fillna(method='ffill', inplace=True)
+    if gradual_change_vals:
+        for col in df.columns:
+            df[col] = gradual_change(df[col])
     df['Removed'] = df['Deaths'] + df['Recovered']
     df['Infected'] = df['Confirmed'] - df['Removed']
     df['Suspected'] = population - df['Infected'] - df['Removed']
-    dConfirmed = df['Confirmed'].diff()
-    df = df[dConfirmed != 0]  # Убрали дни, где общее количество случаев не меняется
     dI = df['Infected'].diff()
     dR = df['Removed'].diff()
     dt = pd.to_datetime(df['Date']).diff().dt.days
@@ -177,10 +212,11 @@ region_population = int(info_frame[info_frame['Region'] == REGION]['Population']
 region_frame = add_stats(region_frame, region_population)
 if TO_SAVE:
     region_frame.to_excel(os.path.join(output_folder, f'{REGION}.xlsx'))
-simulate_graphics(region_frame, region_population, (1, 90), cycles=15, gamma_func=func_lin)
+simulate_graphics(region_frame, region_population, (2, 90), cycles=15, gamma_func=func_lin)
 # %%
-simulate_graphics(region_frame, region_population, (1, 50), cycles=30,
+simulate_graphics(region_frame, region_population, (5, 30), cycles=30,
                   beta_func=func_neg_exp, gamma_func=func_lin)
 
-
+# %%
+region_frame
 # %%
