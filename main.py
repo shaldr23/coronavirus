@@ -10,7 +10,7 @@ from scipy.optimize import curve_fit
 
 # ---------- Начальные параметры -------------------------------------
 
-REGION = 'Республика Башкортостан'
+REGION = 'Москва'
 TO_SAVE = True  # сохранять ли данные в excel
 
 # ---------- Функции -------------------------------------------------
@@ -40,7 +40,7 @@ def gradual_change(seq):
 
 
 def add_stats(df: pd.DataFrame, population, fill_values=True,
-              gradual_change_vals=True):
+              use_gradual_change=False):
     """
     Добавление данных в DataFrame S, I, R, Beta, Gamma.
     В этой ветке функция берет производную в точке как
@@ -60,25 +60,21 @@ def add_stats(df: pd.DataFrame, population, fill_values=True,
         full_dates['Date'] = full_dates['Date'].dt.date
         df = full_dates.merge(df, how='left', on='Date')
         df.fillna(method='ffill', inplace=True)
-    if gradual_change_vals:
+    if use_gradual_change:
         for col in df.columns:
             df[col] = gradual_change(df[col])
     df['Removed'] = df['Deaths'] + df['Recovered']
     df['Infected'] = df['Confirmed'] - df['Removed']
     df['Suspected'] = population - df['Infected'] - df['Removed']
-    dI = df['Infected'].diff()
-    dR = df['Removed'].diff()
+    df['dI'] = -df['Infected'].diff(-2).shift(1)/2
+    df['dR'] = -df['Removed'].diff(-2).shift(1)/2
     dt = pd.to_datetime(df['Date']).diff().dt.days
-    df['Gamma'] = dR / dt / df['Infected']
-    df['Beta'] = (dI / dt + df['Infected'] * df['Gamma']) * population / (df['Infected'] * df['Suspected'])
+    df['Gamma'] = df['dR'] / dt / df['Infected']
+    df['Beta'] = (df['dI'] / dt + df['Infected'] * df['Gamma']) * population / (df['Infected'] * df['Suspected'])
     df['R_0'] = df['Beta'] / df['Gamma']
-    df = df.iloc[1:]  # удаляется первая строчка с NaN в dI, dR, dS
-    
-    # обновляем индекс, учитывая пропущенные значения
-    index = dt.iloc[1:].cumsum()
-    index = index - index.iloc[0] + 1
-    df.index = index
-    df.index.name = 'index'
+    df = df.iloc[1:-1]  # удаляется первая и последняя строчки с NaN в dI, dR, dS
+    df.reset_index(drop=True, inplace=True)
+    df.index = df.index + 1
     return df
 
 
@@ -212,11 +208,20 @@ region_population = int(info_frame[info_frame['Region'] == REGION]['Population']
 region_frame = add_stats(region_frame, region_population)
 if TO_SAVE:
     region_frame.to_excel(os.path.join(output_folder, f'{REGION}.xlsx'))
-simulate_graphics(region_frame, region_population, (2, 90), cycles=15, gamma_func=func_lin)
+simulate_graphics(region_frame, region_population, (1, 90), cycles=15, gamma_func=func_lin)
 # %%
-simulate_graphics(region_frame, region_population, (5, 30), cycles=30,
+simulate_graphics(region_frame, region_population, (1, 70), cycles=15,
                   beta_func=func_neg_exp, gamma_func=func_lin)
 
 # %%
 region_frame
+# %%
+import pandas as pd
+
+s = pd.Series([0, 2, 5, 8, 13])
+# %%
+-s.diff(-2).shift(1)/2
+# %%
+plt.plot(region_frame.index, region_frame['dI'] / region_frame['Infected'])
+plt.show()
 # %%
