@@ -210,7 +210,7 @@ if TO_SAVE:
     region_frame.to_excel(os.path.join(output_folder, f'{REGION}.xlsx'))
 simulate_graphics(region_frame, region_population, (1, 90), cycles=15, gamma_func=func_lin)
 # %%
-simulate_graphics(region_frame, region_population, (1, 70), cycles=15,
+simulate_graphics(region_frame, region_population, (1, 30), cycles=15,
                   beta_func=func_neg_exp, gamma_func=func_lin)
 
 # %%
@@ -223,5 +223,24 @@ s = pd.Series([0, 2, 5, 8, 13])
 -s.diff(-2).shift(1)/2
 # %%
 plt.plot(region_frame.index, region_frame['dI'] / region_frame['Infected'])
+plt.show()
+# %%
+plt.plot(region_frame.index, region_frame['dI'])
+plt.show()
+# %%
+x = np.arange(-10, 10, 0.1)
+y = -x * 10 / (10 + x**2)
+plt.plot(x, y)
+plt.show
+# %%
+def func_asymp(x, a, b, c, d):
+    return - a*(x+d) / (b*x**2 + c)
+
+opt = curve_fit(func_asymp, region_frame.index, region_frame['dI'])[0]
+
+y_fitted = func_asymp(region_frame.index, *opt)
+
+plt.plot(region_frame.index, region_frame['dI'])
+plt.plot(region_frame.index, y_fitted)
 plt.show()
 # %%
