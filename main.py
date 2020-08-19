@@ -179,7 +179,7 @@ if TO_SAVE:
     region_frame.to_excel(os.path.join(output_folder, f'{REGION}.xlsx'))
 simulate_graphics(region_frame, region_population, (1, 90), cycles=15, gamma_func=func_lin)
 # %%
-simulate_graphics(region_frame, region_population, (1, 50), cycles=30,
+simulate_graphics(region_frame, region_population, (1, 40), cycles=15,
                   beta_func=func_neg_exp, gamma_func=func_lin)
 
 
