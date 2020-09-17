@@ -2,7 +2,6 @@
 Модуль для машинного обучения - для предсказания количества
 инфицированных в одном регионе на основе обученной модели
 на данных других регионов
-!!! В данные нужно добавить временные точки(индексом, например)
 """
 # %%
 import pandas as pd
@@ -25,24 +24,25 @@ def transform_data(df: pd.DataFrame):
     Нужны кумулятивные данные (заражений, смертей, выздоровлений)
     за каждый день.
     """
+    df.index = pd.to_datetime(df['Date']).dt.date
     df['delta_t'] = pd.to_datetime(df['Date']).diff().dt.days
     df['Infected'] = df['Confirmed'] - df['Deaths'] - df['Recovered']
     df['I_pct_change'] = df['Infected'].pct_change()
     df = df[['delta_t', 'Region/City', 'Infected', 'I_pct_change']]
     df = df.iloc[1:]  # удаляется первая строчка с NaN в I_pct_change
-    # обновим индекс на всякий случай
-    df.reset_index(inplace=True, drop=True)
     return df
 
 
 def make_learning_data(df: 'pd.DataFrame',
                        predictor_days: int,
-                       predicted_days: 'iterable') -> 'pd.DataFrame':
+                       predicted_days: 'iterable') -> 'tuple of DataFrames':
     """
-    Описание
+    Описание ...
+    y_dates
     """
     x_data = []
     y_data = []
+    y_dates = []
     single_dataset_size = predictor_days + max(predicted_days)
     for i in range(len(df) - single_dataset_size):
         # проверка качества датасетов, плохие не включаем
@@ -60,12 +60,16 @@ def make_learning_data(df: 'pd.DataFrame',
         y_infected = {str(day): df.iloc[i + predictor_days - 1 + day]['Infected'] for day in predicted_days}
         y_pct_change = {key: [(val - x_last_infected) / x_last_infected] for key, val in y_infected.items()}
         y_data.append(pd.DataFrame(y_pct_change))
+        # Соберем даты для точек зависимой переменной
+        y_date_values = {str(day): [df.iloc[i + predictor_days - 1 + day].name] for day in predicted_days}
+        y_dates.append(pd.DataFrame(y_date_values))
     if x_data:  # возвращаем результат только если он есть
         x_data = pd.concat(x_data, ignore_index=True)
-        y_data = pd.concat(y_data)
-        return x_data, y_data
+        y_data = pd.concat(y_data, ignore_index=True)
+        y_dates = pd.concat(y_dates, ignore_index=True)
+        return x_data, y_data, y_dates
     else:
-        return None, None
+        return None, None, None
 
 
 source_folder = 'data/source'
@@ -79,9 +83,10 @@ train_x = []
 train_y = []
 test_x = []
 test_y = []
+test_y_dates = []  # ДАЛЕЕ ПОДПРАВИТЬ, ПЖЛСТ
 for region, region_frame in frame.groupby('Region/City'):
     transformed = transform_data(region_frame)
-    x, y = make_learning_data(transformed, PREDICTOR_DAYS, PREDICTED_DAYS)
+    x, y, dates = make_learning_data(transformed, PREDICTOR_DAYS, PREDICTED_DAYS)
     if x is not None:
         if region != PREDICTED_REGION:
             train_x.append(x)
@@ -89,6 +94,7 @@ for region, region_frame in frame.groupby('Region/City'):
         else:
             test_x.append(x)
             test_y.append(y)
+            test_y_dates.append(dates)
 
 train_x = pd.concat(train_x, ignore_index=True)
 train_y = pd.concat(train_y, ignore_index=True)
@@ -97,11 +103,13 @@ train_y = pd.concat(train_y, ignore_index=True)
 # Пробуем обычную линейную регрессию
 
 lr_model = LinearRegression().fit(train_x, train_y.iloc[:, 3])
-# %%
 lr_model.score(train_x, train_y.iloc[:, 3])
+# %%
+
 # %%
 lr_model.predict(test_x[0])
 # %%
 lr_model.score(test_x[0], test_y[0].iloc[:, 3])
+
 # %%
-def predict_by
+def infected_from_pct_change(x, y: 'pct_change', )
