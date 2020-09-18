@@ -47,7 +47,7 @@ def make_learning_data(df: 'pd.DataFrame',
     y_dates = []
     x_last_infected_data = []
     single_dataset_size = predictor_days + max(predicted_days)
-    for i in range(len(df) - single_dataset_size):
+    for i in range(len(df) - single_dataset_size + 1):
         # проверка качества датасетов, плохие не включаем
         dataset = df.iloc[i:i+single_dataset_size]
         error1 = (dataset['delta_t'] != 1).any()
@@ -97,7 +97,7 @@ def make_train_test_sets(df: 'pd.DataFrame',
     train_y = []
     test_data = {}
     # Делаем тренировочный набор
-    train_df = df[pd.to_datetime(df['Date']) <= 'last_learning_date']
+    train_df = df[pd.to_datetime(df['Date']) <= last_learning_date]
     for region, region_frame in train_df.groupby('Region/City'):
         transformed = transform_data(region_frame)
         x, y, *trash = make_learning_data(transformed, predictor_days, predicted_days)
@@ -110,20 +110,34 @@ def make_train_test_sets(df: 'pd.DataFrame',
     # Делаем тестовые наборы
     # Надо, чтобы предикторы были датированы до last_learning_date включительно,
     # А предсказываемые данные находились после last_learning_date.
-    start_set_date = pd.to_datetime('last_learning_date') - pd.Timedelta(predictor_days - 1, unit='d')
-    end_set_date = pd.to_datetime('last_learning_date') + pd.Timedelta(predicted_days, unit='d')
+    # Не забываем, что функция transform_data удаляет первую строчку датасета.
+    start_set_date = pd.to_datetime(last_learning_date) - pd.Timedelta(predictor_days, unit='d')
+    end_set_date = pd.to_datetime(last_learning_date) + pd.Timedelta(max(predicted_days), unit='d')
     test_df = df[pd.to_datetime(df['Date']).between(start_set_date, end_set_date)]
     for region, region_frame in test_df.groupby('Region/City'):
         transformed = transform_data(region_frame)
         x, y, y_dates, x_last_infected = make_learning_data(transformed, predictor_days,
                                                             predicted_days, test_data=True)
         if x is not None:
-            test_data[region_frame] = {}
-            test_data[region_frame]['x'] = x
-            test_data[region_frame]['y'] = y
-            test_data[region_frame]['y_dates'] = y_dates
-            test_data[region_frame]['x_last_infected'] = x_last_infected
+            test_data[region] = {}
+            test_data[region]['x'] = x
+            test_data[region]['y'] = y
+            test_data[region]['y_dates'] = y_dates
+            test_data[region]['x_last_infected'] = x_last_infected
     return train_x, train_y, test_data
+
+
+def compare(train_x,
+            train_y,
+            test_data,
+            model: 'sklearn model'):
+    """
+    Description
+    """
+    points_models = {key: model().fit(train_x, train_y[key]) for key in train_y.columns}
+    for region, data in test_data.items():
+        predicted_points = {key: model.predict(data['x']) for key, model in points_models.items()}
+        predicted_infected = {key: data['x_last_infected'] + data['x_last_infected'] * data['y']}
 
 
 source_folder = 'data/source'
@@ -133,13 +147,12 @@ info_file_name = 'regions-info.csv'
 frame = pd.read_csv(os.path.join(source_folder, file_name))
 
 
-
+train_x, train_y, test_data = make_train_test_sets(frame, '2020-05-01', 10, np.arange(1, 16))
 # %%
 # Пробуем обычную линейную регрессию
 
-lr_model = LinearRegression().fit(train_x, train_y.iloc[:, 3])
-print(lr_model.score(train_x, train_y.iloc[:, 3]))
-print(lr_model.score(test_x[0], test_y[0].iloc[:, 3]))
+lr_model = LinearRegression().fit(train_x, train_y['3'])
+lr_model.predict(test_data['Москва']['x'])
 
 # %%
 lr_model = LinearRegression().fit(train_x, train_y.iloc[:, 3])
@@ -164,5 +177,17 @@ predicted_infected
 # %%
 test_frame.loc[test_y_dates[0].iloc[:, 3]]
 # %%
+class H:
+    def __init__(self, num):
+        self.num = num
 
+l = lambda x: H(x)
+
+seq = [l(x) for x in range(3)]
+# %%
+seq
+# %%
+seq[0].num
+# %%
+seq[2].num
 # %%
