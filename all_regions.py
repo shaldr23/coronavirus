@@ -36,7 +36,7 @@ def transform_data(df: pd.DataFrame):
 def make_learning_data(df: 'pd.DataFrame',
                        predictor_days: int,
                        predicted_days: 'iterable',
-                       test_data=False) -> 'tuple of DataFrames':
+                       test_data=False) -> 'tuple of objects':
     """
     Описание ...
     Если test_data == True, то возвращаются дополнительные данные,
@@ -73,9 +73,57 @@ def make_learning_data(df: 'pd.DataFrame',
         y_data = pd.concat(y_data, ignore_index=True)
         if test_data:
             y_dates = pd.concat(y_dates, ignore_index=True)
+            x_last_infected_data = pd.Series(x_last_infected_data)
         return x_data, y_data, y_dates, x_last_infected_data
     else:
         return (None,) * 4
+
+
+def make_train_test_sets(df: 'pd.DataFrame',
+                         last_learning_date: 'YYYY-MM-DD',
+                         predictor_days: int,
+                         predicted_days: 'iterable'):
+    """
+    Производит тренировочный и тестовый наборы данных
+    train_x: pd.DataFrame
+    train_y: pd.DataFrame
+    test_data: {<region_1>: {'x': pd.DataFrame,
+                             'y': pd.DataFrame,
+                             'y_dates': pd.DataFrame,
+                             'x_last_infected': pd.Series},
+                ...}
+    """
+    train_x = []
+    train_y = []
+    test_data = {}
+    # Делаем тренировочный набор
+    train_df = df[pd.to_datetime(df['Date']) <= 'last_learning_date']
+    for region, region_frame in train_df.groupby('Region/City'):
+        transformed = transform_data(region_frame)
+        x, y, *trash = make_learning_data(transformed, predictor_days, predicted_days)
+        if x is not None:
+            train_x.append(x)
+            train_y.append(y)
+    train_x = pd.concat(train_x, ignore_index=True)
+    train_y = pd.concat(train_y, ignore_index=True)
+
+    # Делаем тестовые наборы
+    # Надо, чтобы предикторы были датированы до last_learning_date включительно,
+    # А предсказываемые данные находились после last_learning_date.
+    start_set_date = pd.to_datetime('last_learning_date') - pd.Timedelta(predictor_days - 1, unit='d')
+    end_set_date = pd.to_datetime('last_learning_date') + pd.Timedelta(predicted_days, unit='d')
+    test_df = df[pd.to_datetime(df['Date']).between(start_set_date, end_set_date)]
+    for region, region_frame in test_df.groupby('Region/City'):
+        transformed = transform_data(region_frame)
+        x, y, y_dates, x_last_infected = make_learning_data(transformed, predictor_days,
+                                                            predicted_days, test_data=True)
+        if x is not None:
+            test_data[region_frame] = {}
+            test_data[region_frame]['x'] = x
+            test_data[region_frame]['y'] = y
+            test_data[region_frame]['y_dates'] = y_dates
+            test_data[region_frame]['x_last_infected'] = x_last_infected
+    return train_x, train_y, test_data
 
 
 source_folder = 'data/source'
@@ -84,43 +132,37 @@ file_name = 'covid19-russia-cases-scrf.csv'
 info_file_name = 'regions-info.csv'
 frame = pd.read_csv(os.path.join(source_folder, file_name))
 
-# Объединяем данные с разных регионов в один набор
-train_x = []
-train_y = []
-test_x = []
-test_y = []
-test_y_dates = []
-test_x_last_infected = []
-for region, region_frame in frame.groupby('Region/City'):
-    transformed = transform_data(region_frame)
-    if region != PREDICTED_REGION:
-        x, y, *trash = make_learning_data(transformed, PREDICTOR_DAYS, PREDICTED_DAYS)
-        if x is not None:
-            train_x.append(x)
-            train_y.append(y)
-    else:
-        x, y, dates, x_last_infected = make_learning_data(transformed, PREDICTOR_DAYS, PREDICTED_DAYS,
-                                                          test_data=True)
-        if x is not None:
-            test_x.append(x)
-            test_y.append(y)
-            test_y_dates.append(dates)
-            test_x_last_infected.append(x_last_infected)
 
-train_x = pd.concat(train_x, ignore_index=True)
-train_y = pd.concat(train_y, ignore_index=True)
 
 # %%
 # Пробуем обычную линейную регрессию
 
 lr_model = LinearRegression().fit(train_x, train_y.iloc[:, 3])
-lr_model.score(train_x, train_y.iloc[:, 3])
+print(lr_model.score(train_x, train_y.iloc[:, 3]))
+print(lr_model.score(test_x[0], test_y[0].iloc[:, 3]))
+
+# %%
+lr_model = LinearRegression().fit(train_x, train_y.iloc[:, 3])
+predicted_pct_change = lr_model.predict(test_x[0])
+predicted_infected = test_x_last_infected[0] + test_x_last_infected[0] * predicted_pct_change
+# %%
+predicted_infected
+# %%
+test_frame = transform_data(frame[frame['Region/City'] == PREDICTED_REGION])
+# %%
+test_frame.loc[test_y_dates[0].iloc[:, 3]]
+# %%
+predicted_infected
+# %%
+plt.plot(list(predicted_infected), label='predicted')
+plt.plot(list(test_frame.loc[test_y_dates[0].iloc[:, 3]]['Infected']),
+         label='real')
+plt.legend()
+plt.show()
+# %%
+predicted_infected
+# %%
+test_frame.loc[test_y_dates[0].iloc[:, 3]]
 # %%
 
 # %%
-lr_model.predict(test_x[0])
-# %%
-lr_model.score(test_x[0], test_y[0].iloc[:, 3])
-
-# %%
-def infected_from_pct_change(x, y: 'pct_change', )
