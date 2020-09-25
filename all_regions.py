@@ -127,18 +127,24 @@ def make_train_test_sets(df: 'pd.DataFrame',
     return train_x, train_y, test_data
 
 
-def compare(train_x,
-            train_y,
-            test_data,
-            model: 'sklearn model'):
+def train_predict(train_x,
+                  train_y,
+                  test_data,
+                  model: 'sklearn model'):
     """
     Description
     """
     points_models = {key: model().fit(train_x, train_y[key]) for key in train_y.columns}
+    predictions = {}
     for region, data in test_data.items():
         predicted_points = {key: model.predict(data['x']) for key, model in points_models.items()}
-        predicted_infected = {key: data['x_last_infected'] + data['x_last_infected'] * data['y']}
-
+        predicted_points = pd.DataFrame(predicted_points)
+        x_last_infected = data['x_last_infected'][0]
+        predicted_infected = predicted_points * x_last_infected + x_last_infected
+        predictions[region] = {}
+        predictions[region]['pct_change'] = predicted_points
+        predictions[region]['infected'] = predicted_infected
+    return predictions
 
 source_folder = 'data/source'
 output_folder = 'data/output'
@@ -147,47 +153,10 @@ info_file_name = 'regions-info.csv'
 frame = pd.read_csv(os.path.join(source_folder, file_name))
 
 
-train_x, train_y, test_data = make_train_test_sets(frame, '2020-05-01', 10, np.arange(1, 16))
-# %%
-# Пробуем обычную линейную регрессию
-
-lr_model = LinearRegression().fit(train_x, train_y['3'])
-lr_model.predict(test_data['Москва']['x'])
+train_x, train_y, test_data = make_train_test_sets(frame, '2020-06-01', 10, np.arange(1, 16))
+predictions = train_predict(train_x, train_y, test_data, LinearRegression)
 
 # %%
-lr_model = LinearRegression().fit(train_x, train_y.iloc[:, 3])
-predicted_pct_change = lr_model.predict(test_x[0])
-predicted_infected = test_x_last_infected[0] + test_x_last_infected[0] * predicted_pct_change
-# %%
-predicted_infected
-# %%
-test_frame = transform_data(frame[frame['Region/City'] == PREDICTED_REGION])
-# %%
-test_frame.loc[test_y_dates[0].iloc[:, 3]]
-# %%
-predicted_infected
-# %%
-plt.plot(list(predicted_infected), label='predicted')
-plt.plot(list(test_frame.loc[test_y_dates[0].iloc[:, 3]]['Infected']),
-         label='real')
-plt.legend()
-plt.show()
-# %%
-predicted_infected
-# %%
-test_frame.loc[test_y_dates[0].iloc[:, 3]]
-# %%
-class H:
-    def __init__(self, num):
-        self.num = num
-
-l = lambda x: H(x)
-
-seq = [l(x) for x in range(3)]
-# %%
-seq
-# %%
-seq[0].num
-# %%
-seq[2].num
-# %%
+# Исследуем предсказания
+from sklearn.ensemble import RandomForestRegressor
+predictions = train_predict(train_x, train_y, test_data, RandomForestRegressor)
