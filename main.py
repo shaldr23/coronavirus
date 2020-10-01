@@ -10,8 +10,8 @@ from scipy.optimize import curve_fit
 
 # ---------- Начальные параметры -------------------------------------
 
-REGION = 'Республика Башкортостан'
-TO_SAVE = True  # сохранять ли данные в excel
+REGION = 'Республика Татарстан'
+TO_SAVE = False  # сохранять ли данные в excel
 
 # ---------- Функции -------------------------------------------------
 
@@ -47,7 +47,7 @@ def add_stats(df: pd.DataFrame, population):
     return df
 
 
-def simulate_dynamic(P: 'population', I: 'infected',
+def simulate_dynamics(P: 'population', I: 'infected',
                      R: 'removed', beta_func: 'function', gamma_func: 'function',
                      start_time=2, cycles=100) -> dict:
     """
@@ -99,17 +99,24 @@ def func_polynom_2p(x, a, b, c):
     return a*x**2 + b*x + c
 
 
+def smooth(y, box_pts):
+    box = np.ones(box_pts)/box_pts
+    y_smooth = np.convolve(y, box, mode='same')
+    return y_smooth
+
+
 def simulate_graphics(dataset: pd.DataFrame,
                       population,
                       training_range: '(start_index, end_index)',
                       cycles=100,
                       beta_func=func_neg_exp,
                       gamma_func=func_lin,
+                      smoothing=True,
                       show_pictures=True,
                       return_result=False):
     """
     Функция, осуществляющая подбор уравнений для Beta и Gamma,
-    использующая функцию simulate_dynamic для симуляции заражения с некоторого
+    использующая функцию simulate_dynamics для симуляции заражения с некоторого
     момента времени и строящая графики.
     """
     training_set = dataset.loc[training_range[0]:training_range[1] + 1]
@@ -117,18 +124,25 @@ def simulate_graphics(dataset: pd.DataFrame,
     xdata = training_set.index
 
     y_beta = training_set['Beta']
-    beta_opt = curve_fit(beta_func, xdata, y_beta)[0]
     y_gamma = training_set['Gamma']
-    gamma_opt = curve_fit(gamma_func, xdata, y_gamma)[0]
-
+    if not smoothing:
+        beta_opt = curve_fit(beta_func, xdata, y_beta)[0]
+        gamma_opt = curve_fit(gamma_func, xdata, y_gamma)[0]
+    else:
+        y_beta_smoothed = smooth(y_beta, 5)
+        y_gamma_smoothed = smooth(y_gamma, 5)
+        beta_opt = curve_fit(beta_func, xdata, y_beta_smoothed)[0]
+        gamma_opt = curve_fit(gamma_func, xdata, y_gamma_smoothed)[0]
     # Строим графики для Beta и Gamma, если нужно:
     if show_pictures:
         # График для Beta
         y_beta_fitted = beta_func(xdata, *beta_opt)
         r2 = r2_score(y_beta, y_beta_fitted)
         plt.plot(xdata, y_beta_fitted, 'r-',
-                 label=f'params: {tuple(beta_opt)}')
+                 label=f'params: {tuple(round(opt, 5) for opt in beta_opt)}')
         plt.plot(xdata, y_beta, label='real')
+        if smoothing:
+            plt.plot(xdata, y_beta_smoothed, label='smoothed')
         plt.legend()
         plt.title(f'Beta: {beta_func.__name__}, R2={r2}')
         plt.show()
@@ -136,8 +150,10 @@ def simulate_graphics(dataset: pd.DataFrame,
         y_gamma_fitted = gamma_func(xdata, *gamma_opt)
         r2 = r2_score(y_gamma, y_gamma_fitted)
         plt.plot(xdata, y_gamma_fitted, 'r-',
-                 label=f'params: {tuple(gamma_opt)}')
+                 label=f'params: {tuple(round(opt, 5) for opt in gamma_opt)}')
         plt.plot(xdata, y_gamma, label='real')
+        if smoothing:
+            plt.plot(xdata, y_gamma_smoothed, label='smoothed')
         plt.legend()
         plt.title(f'Gamma: {gamma_func.__name__}, R2={r2}')
         plt.show()
@@ -145,7 +161,7 @@ def simulate_graphics(dataset: pd.DataFrame,
     # Симуляция
     init_vals = dataset.loc[training_range[1]]  # From here we take I and R
     start_sim_time = training_set.index[-1] + 1
-    simulated = simulate_dynamic(population, init_vals['Infected'], init_vals['Removed'],
+    simulated = simulate_dynamics(population, init_vals['Infected'], init_vals['Removed'],
                                  beta_func=lambda x: beta_func(x, *beta_opt),
                                  gamma_func=lambda x: gamma_func(x, *gamma_opt),
                                  cycles=cycles, start_time=start_sim_time)
@@ -162,7 +178,11 @@ def simulate_graphics(dataset: pd.DataFrame,
         return simulated
 
 
-# %%
+def regional_simulation(frame, info_frame, region_name):
+    """
+    docstring
+    """
+    pass
 
 # ---------- Исполнение -------------------------------------------------------
 
@@ -179,8 +199,13 @@ if TO_SAVE:
     region_frame.to_excel(os.path.join(output_folder, f'{REGION}.xlsx'))
 simulate_graphics(region_frame, region_population, (1, 90), cycles=15, gamma_func=func_lin)
 # %%
-simulate_graphics(region_frame, region_population, (1, 40), cycles=15,
-                  beta_func=func_neg_exp, gamma_func=func_lin)
+simulate_graphics(region_frame, region_population, (85, 110), cycles=15,
+                  beta_func=func_neg_exp, gamma_func=func_lin,
+                  smoothing=True)
 
+# %%
+simulate_graphics(region_frame, region_population, (1, 75), cycles=15,
+                  beta_func=func_neg_exp, gamma_func=func_lin,
+                  smoothing=False)
 
 # %%

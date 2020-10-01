@@ -160,3 +160,11 @@ predictions = train_predict(train_x, train_y, test_data, LinearRegression)
 # Исследуем предсказания
 from sklearn.ensemble import RandomForestRegressor
 predictions = train_predict(train_x, train_y, test_data, RandomForestRegressor)
+
+# %%
+moscow_frame = transform_data(frame[frame['Region/City'] == 'Москва'])
+# %%
+plt.plot(list(moscow_frame['I_pct_change']))
+plt.plot([0]*len(moscow_frame['I_pct_change']))
+plt.show()
+# %%
