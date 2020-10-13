@@ -1,20 +1,11 @@
-# %%
+"""
+Модуль с инструментами
+"""
 import pandas as pd
 import numpy as np
-import os
 from matplotlib import pyplot as plt
-from sklearn.metrics import mean_squared_error as mse
 from sklearn.metrics import r2_score
 from scipy.optimize import curve_fit
-
-
-# ---------- Начальные параметры -------------------------------------
-
-REGION = 'Москва'
-TO_SAVE = True  # сохранять ли данные в excel
-SMOOTH_POINTS = 10
-
-# ---------- Функции -------------------------------------------------
 
 
 def gradual_change(seq):
@@ -279,32 +270,3 @@ def multiple_simulate_graphics(dataset: pd.DataFrame,
     plt.show()
     if return_result:
         return all_sim_data
-
-
-# ---------- Исполнение -------------------------------------------------------
-
-source_folder = 'data/source'
-output_folder = 'data/output'
-file_name = 'covid19-russia-cases-scrf.csv'
-info_file_name = 'regions-info.csv'
-frame = pd.read_csv(os.path.join(source_folder, file_name))
-info_frame = pd.read_csv(os.path.join(source_folder, info_file_name))
-region_frame = frame[frame['Region/City'] == REGION]
-region_population = int(info_frame[info_frame['Region'] == REGION]['Population'])
-region_frame = add_stats(region_frame, region_population)
-if TO_SAVE:
-    region_frame.to_excel(os.path.join(output_folder, f'{REGION}.xlsx'))
-simulate_graphics(region_frame, region_population, (1, 90), cycles=15,
-                  smooth_points=5)
-# %%
-simulate_graphics(region_frame, region_population, (1, 20), cycles=15,
-                  smooth_points=5)
-
-# %%
-multiple_simulate_graphics(region_frame, region_population,
-                           first_training_end=20,
-                           training_end_increment=1,
-                           return_result=False,
-                           restrict_y=False)
-
-# %%
