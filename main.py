@@ -6,12 +6,13 @@ from matplotlib import pyplot as plt
 from sklearn.metrics import mean_squared_error as mse
 from sklearn.metrics import r2_score
 from scipy.optimize import curve_fit
-# from helpack.timetools import time_it
+
 
 # ---------- Начальные параметры -------------------------------------
 
 REGION = 'Москва'
 TO_SAVE = True  # сохранять ли данные в excel
+SMOOTH_POINTS = 10
 
 # ---------- Функции -------------------------------------------------
 
@@ -40,7 +41,7 @@ def gradual_change(seq):
 
 
 def add_stats(df: pd.DataFrame, population, fill_values=True,
-              use_gradual_change=False):
+              use_gradual_change=True):
     """
     Добавление данных в DataFrame S, I, R, Beta, Gamma.
     В этой ветке функция берет производную в точке как
@@ -53,6 +54,7 @@ def add_stats(df: pd.DataFrame, population, fill_values=True,
     т.к. показателей dI, dR, dS для нее нет.
     """
     df = df[['Date', 'Confirmed', 'Deaths', 'Recovered']]
+    df = df[df['Confirmed'] != 0]
     df['Date'] = pd.to_datetime(df['Date']).dt.date
     if fill_values:
         full_dates = pd.date_range(df['Date'].min(), df['Date'].max())
@@ -61,7 +63,7 @@ def add_stats(df: pd.DataFrame, population, fill_values=True,
         df = full_dates.merge(df, how='left', on='Date')
         df.fillna(method='ffill', inplace=True)
     if use_gradual_change:
-        for col in df.columns:
+        for col in ('Confirmed', 'Deaths', 'Recovered'):
             df[col] = gradual_change(df[col])
     df['Removed'] = df['Deaths'] + df['Recovered']
     df['Infected'] = df['Confirmed'] - df['Removed']
@@ -78,9 +80,9 @@ def add_stats(df: pd.DataFrame, population, fill_values=True,
     return df
 
 
-def simulate_dynamic(P: 'population', I: 'infected',
-                     R: 'removed', beta_func: 'function', gamma_func: 'function',
-                     start_time=2, cycles=100) -> dict:
+def simulate_dynamics(P: 'population', I: 'infected',
+                      R: 'removed', beta_func: 'function', gamma_func: 'function',
+                      start_time=2, cycles=100) -> dict:
     """
     Function to simulate SIR model. beta and gamma depend on time.
     Return dict, not DataFrame, because it is MUCH faster
@@ -106,28 +108,25 @@ def func_neg_exp(x, a, b):
     return a * np.exp(-b * x)
 
 
-def func_neg_exp2(x, a, b, c):
-    return a * np.exp(-b * x + c)
-
-
-def func_exp(x, a, b, c):
-    return a * np.exp(b * x + c)
-
-
 def func_lin(x, a, b):
     return a * x + b
 
 
-def func_log(x, a, b, c, d):
-    return a * np.log(b * x + c) + d
+def smooth(y, box_pts):
+    """
+    Функция для сглаживания графиков
+    """
+    box = np.ones(box_pts)/box_pts
+    y_smooth = np.convolve(y, box, mode='same')
+    return y_smooth
 
 
-def func_logistic(x, a, b, c):
-    return a / (1 + np.exp(-b * (x - c)))
-
-
-def func_polynom_2p(x, a, b, c):
-    return a*x**2 + b*x + c
+def mape_score(y_true, y_pred):
+    """
+    mean_absolute_percentage_error
+    """
+    y_true, y_pred = np.array(y_true), np.array(y_pred)
+    return np.mean(np.abs((y_true - y_pred) / y_true)) * 100
 
 
 def simulate_graphics(dataset: pd.DataFrame,
@@ -136,64 +135,151 @@ def simulate_graphics(dataset: pd.DataFrame,
                       cycles=100,
                       beta_func=func_neg_exp,
                       gamma_func=func_lin,
+                      correct_beta_coef=True,
+                      smooth_points=5,
                       show_pictures=True,
                       return_result=False):
     """
     Функция, осуществляющая подбор уравнений для Beta и Gamma,
-    использующая функцию simulate_dynamic для симуляции заражения с некоторого
+    использующая функцию simulate_dynamics для симуляции заражения с некоторого
     момента времени и строящая графики.
+    correct_beta_coef: коррекция показателя степени в функции для beta,
+    если beta растет: из правой половины отщепляем максимальные значения,
+    пока beta не будет уменьшаться.
     """
     training_set = dataset.loc[training_range[0]:training_range[1] + 1]
     training_set.reset_index(inplace=True)  # сбрасываем индекс, т.к. эксп. регрессия капризная
     xdata = training_set.index
 
     y_beta = training_set['Beta']
-    beta_opt = curve_fit(beta_func, xdata, y_beta)[0]
     y_gamma = training_set['Gamma']
-    gamma_opt = curve_fit(gamma_func, xdata, y_gamma)[0]
-
+    if not smooth_points:
+        beta_opt = curve_fit(beta_func, xdata, y_beta)[0]
+        gamma_opt = curve_fit(gamma_func, xdata, y_gamma)[0]
+    else:
+        y_beta_smoothed = smooth(y_beta, smooth_points)
+        y_gamma_smoothed = smooth(y_gamma, smooth_points)
+        beta_opt = curve_fit(beta_func, xdata, y_beta_smoothed)[0]
+        gamma_opt = curve_fit(gamma_func, xdata, y_gamma_smoothed)[0]
+    if correct_beta_coef:
+        beta_frame = pd.DataFrame({'xdata': xdata,
+                                   'ydata': y_beta})
+        while beta_opt[1] < 0:
+            left_border = int((len(beta_frame) + 1)/2)
+            idxmax = beta_frame.iloc[left_border:]['ydata'].idxmax()
+            beta_frame = beta_frame.drop(idxmax)
+            if not smooth_points:
+                beta_opt = curve_fit(beta_func, beta_frame['xdata'], beta_frame['ydata'])[0]
+            else:
+                y_beta_corr_smoothed = smooth(beta_frame['ydata'], smooth_points)
+                beta_opt = curve_fit(beta_func, beta_frame['xdata'], y_beta_corr_smoothed)[0]
     # Строим графики для Beta и Gamma, если нужно:
     if show_pictures:
         # График для Beta
         y_beta_fitted = beta_func(xdata, *beta_opt)
         r2 = r2_score(y_beta, y_beta_fitted)
+        plt.plot(xdata, y_beta, '-o', label='Реальные данные')
+        if smooth_points:
+            plt.plot(xdata, y_beta_smoothed, label='Сглаженные данные')
+            r2 = r2_score(y_beta_smoothed, y_beta_fitted)
         plt.plot(xdata, y_beta_fitted, 'r-',
-                 label=f'params: {tuple(beta_opt)}')
-        plt.plot(xdata, y_beta, label='real')
+                 label=f'Регрессионная кривая.\nПараметры: {tuple(round(opt, 5) for opt in beta_opt)}\n'
+                 f'R2 = {r2:.3f}')
         plt.legend()
-        plt.title(f'Beta: {beta_func.__name__}, R2={r2}')
+        plt.title('Построение графика для параметра \u03B2')
+        plt.xlabel('Дни')
+        plt.ylabel('Значение показателя \u03B2')
         plt.show()
         # График для Gamma
         y_gamma_fitted = gamma_func(xdata, *gamma_opt)
         r2 = r2_score(y_gamma, y_gamma_fitted)
+        plt.plot(xdata, y_gamma, '-o', label='Реальные данные')
+        if smooth_points:
+            plt.plot(xdata, y_gamma_smoothed, label='Сглаженные данные')
+            r2 = r2_score(y_gamma_smoothed, y_gamma_fitted)
         plt.plot(xdata, y_gamma_fitted, 'r-',
-                 label=f'params: {tuple(gamma_opt)}')
-        plt.plot(xdata, y_gamma, label='real')
+                 label=f'Регрессионная кривая.\nПараметры: {tuple(round(opt, 5) for opt in gamma_opt)}\n'
+                 f'R2 = {r2:.3f}')
         plt.legend()
-        plt.title(f'Gamma: {gamma_func.__name__}, R2={r2}')
+        plt.title('Построение графика для параметра \u03B3')
+        plt.xlabel('Дни')
+        plt.ylabel('Значение показателя \u03B3')
         plt.show()
 
     # Симуляция
     init_vals = dataset.loc[training_range[1]]  # From here we take I and R
     start_sim_time = training_set.index[-1] + 1
-    simulated = simulate_dynamic(population, init_vals['Infected'], init_vals['Removed'],
-                                 beta_func=lambda x: beta_func(x, *beta_opt),
-                                 gamma_func=lambda x: gamma_func(x, *gamma_opt),
-                                 cycles=cycles, start_time=start_sim_time)
+    simulated = simulate_dynamics(population, init_vals['Infected'], init_vals['Removed'],
+                                  beta_func=lambda x: beta_func(x, *beta_opt),
+                                  gamma_func=lambda x: gamma_func(x, *gamma_opt),
+                                  cycles=cycles, start_time=start_sim_time)
     if show_pictures:
         simulation_x = np.arange(training_range[1] + 1, training_range[1] + 1 + cycles)
-        plt.plot(simulation_x, simulated['Infected'], label='Infected simulated')
-        plt.plot(dataset.index, dataset['Infected'], label='Infected real')
-        plt.title(f'Simulation start time={training_range[1] + 1}\n'
-                  f'training range={training_range}\n'
-                  f'simulated cycles={cycles}')
+        plt.plot(dataset.index, dataset['Infected'], label='Реальные данные')
+        r2 = r2_score(dataset['Infected'][simulation_x], simulated['Infected'])
+        mape = mape_score(dataset['Infected'][simulation_x], simulated['Infected'])
+        plt.plot(simulation_x, simulated['Infected'], 'r-',
+                 label=f'Симуляция\nR2 = {r2:.3f}\nMAPE = {mape:.2f}')
+        plt.title(f'Симуляция с дня {training_range[1] + 1}')
+        plt.xlabel('Дни')
+        plt.ylabel('Количество инфицированных')
         plt.legend()
         plt.show()
     if return_result:
         return simulated
 
 
-# %%
+def multiple_simulate_graphics(dataset: pd.DataFrame,
+                               population,
+                               first_training_end=30,
+                               training_end_increment=15,
+                               cycles=15,
+                               beta_func=func_neg_exp,
+                               gamma_func=func_lin,
+                               smooth_points=5,
+                               show_pictures=True,
+                               return_result=True,
+                               restrict_y=True):
+    """
+    !!! Реализовать вывод результата, м.б. одной циферкой.
+    """
+    all_sim_data = {'x': [], 'y': []}
+    for training_end in range(first_training_end,
+                              len(dataset) - cycles + 1,
+                              training_end_increment):
+        simulated = simulate_graphics(dataset,
+                                      population,
+                                      (1, training_end),
+                                      cycles=cycles,
+                                      beta_func=beta_func,
+                                      gamma_func=gamma_func,
+                                      smooth_points=smooth_points,
+                                      show_pictures=False,
+                                      return_result=True)
+        all_sim_data['y'].append(simulated['Infected'])
+        simulation_x = np.arange(training_end + 1, training_end + 1 + cycles)
+        all_sim_data['x'].append(simulation_x)
+        if training_end == first_training_end:
+            label = 'Симуляция'
+        else:
+            label = None
+        plt.plot(simulation_x, simulated['Infected'], 'r-',
+                 label=label)
+    plt.plot(dataset.index, dataset['Infected'], label='Реальные данные')
+    plt.legend()
+    if restrict_y:
+        if type(restrict_y) in (int, float):
+            max_y = restrict_y
+        else:
+            max_y = dataset['Infected'].max() * 2
+        plt.ylim(top=max_y)
+    plt.xlabel('Дни')
+    plt.ylabel('Количество инфицированных')
+    plt.title(f'Множественная симуляция с дня {first_training_end + 1}')
+    plt.show()
+    if return_result:
+        return all_sim_data
+
 
 # ---------- Исполнение -------------------------------------------------------
 
@@ -208,39 +294,17 @@ region_population = int(info_frame[info_frame['Region'] == REGION]['Population']
 region_frame = add_stats(region_frame, region_population)
 if TO_SAVE:
     region_frame.to_excel(os.path.join(output_folder, f'{REGION}.xlsx'))
-simulate_graphics(region_frame, region_population, (1, 90), cycles=15, gamma_func=func_lin)
+simulate_graphics(region_frame, region_population, (1, 90), cycles=15,
+                  smooth_points=5)
 # %%
-simulate_graphics(region_frame, region_population, (1, 30), cycles=15,
-                  beta_func=func_neg_exp, gamma_func=func_lin)
+simulate_graphics(region_frame, region_population, (1, 20), cycles=15,
+                  smooth_points=5)
 
 # %%
-region_frame
-# %%
-import pandas as pd
+multiple_simulate_graphics(region_frame, region_population,
+                           first_training_end=20,
+                           training_end_increment=1,
+                           return_result=False,
+                           restrict_y=False)
 
-s = pd.Series([0, 2, 5, 8, 13])
-# %%
--s.diff(-2).shift(1)/2
-# %%
-plt.plot(region_frame.index, region_frame['dI'] / region_frame['Infected'])
-plt.show()
-# %%
-plt.plot(region_frame.index, region_frame['dI'])
-plt.show()
-# %%
-x = np.arange(-10, 10, 0.1)
-y = -x * 10 / (10 + x**2)
-plt.plot(x, y)
-plt.show
-# %%
-def func_asymp(x, a, b, c, d):
-    return - a*(x+d) / (b*x**2 + c)
-
-opt = curve_fit(func_asymp, region_frame.index, region_frame['dI'])[0]
-
-y_fitted = func_asymp(region_frame.index, *opt)
-
-plt.plot(region_frame.index, region_frame['dI'])
-plt.plot(region_frame.index, y_fitted)
-plt.show()
 # %%
