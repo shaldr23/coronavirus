@@ -135,7 +135,7 @@ def simulate_graphics(dataset: pd.DataFrame,
     использующая функцию simulate_dynamics для симуляции заражения с некоторого
     момента времени и строящая графики.
     correct_beta_coef: коррекция показателя степени в функции для beta,
-    если beta растет: из правой половины отщепляем максимальные значения,
+    если beta растет: из левой половины отщепляем минимальные значения,
     пока beta не будет уменьшаться.
     """
     training_set = dataset.loc[training_range[0]:training_range[1] + 1]
@@ -144,26 +144,25 @@ def simulate_graphics(dataset: pd.DataFrame,
 
     y_beta = training_set['Beta']
     y_gamma = training_set['Gamma']
-    if not smooth_points:
-        beta_opt = curve_fit(beta_func, xdata, y_beta)[0]
-        gamma_opt = curve_fit(gamma_func, xdata, y_gamma)[0]
-    else:
-        y_beta_smoothed = smooth(y_beta, smooth_points)
-        y_gamma_smoothed = smooth(y_gamma, smooth_points)
-        beta_opt = curve_fit(beta_func, xdata, y_beta_smoothed)[0]
-        gamma_opt = curve_fit(gamma_func, xdata, y_gamma_smoothed)[0]
+    y_beta_smoothed = smooth(y_beta, smooth_points)
+    y_gamma_smoothed = smooth(y_gamma, smooth_points)
+    beta_opt = curve_fit(beta_func, xdata, y_beta_smoothed)[0]
+    gamma_opt = curve_fit(gamma_func, xdata, y_gamma_smoothed)[0]
     if correct_beta_coef:
         beta_frame = pd.DataFrame({'xdata': xdata,
                                    'ydata': y_beta})
         while beta_opt[1] < 0:
-            left_border = int((len(beta_frame) + 1)/2)
-            idxmax = beta_frame.iloc[left_border:]['ydata'].idxmax()
-            beta_frame = beta_frame.drop(idxmax)
-            if not smooth_points:
-                beta_opt = curve_fit(beta_func, beta_frame['xdata'], beta_frame['ydata'])[0]
-            else:
+            if len(beta_frame) > smooth_points:
+                right_border = int(len(beta_frame)/2)
+                idxmin = beta_frame.iloc[:right_border]['ydata'].idxmin()
+                beta_frame = beta_frame.drop(idxmin)
                 y_beta_corr_smoothed = smooth(beta_frame['ydata'], smooth_points)
-                beta_opt = curve_fit(beta_func, beta_frame['xdata'], y_beta_corr_smoothed)[0]
+                try:
+                    beta_opt = curve_fit(beta_func, beta_frame['xdata'], y_beta_corr_smoothed)[0]
+                except RuntimeError:
+                    pass
+            else:
+                beta_opt[1] = -beta_opt[1]
     # Строим графики для Beta и Gamma, если нужно:
     if show_pictures:
         # График для Beta
@@ -175,7 +174,7 @@ def simulate_graphics(dataset: pd.DataFrame,
             r2 = r2_score(y_beta_smoothed, y_beta_fitted)
         plt.plot(xdata, y_beta_fitted, 'r-',
                  label=f'Регрессионная кривая.\nПараметры: {tuple(round(opt, 5) for opt in beta_opt)}\n'
-                 f'R2 = {r2:.3f}')
+                 f'$R^2$ = {r2:.3f}')
         plt.legend()
         plt.title('Построение графика для параметра \u03B2')
         plt.xlabel('Дни')
@@ -190,7 +189,7 @@ def simulate_graphics(dataset: pd.DataFrame,
             r2 = r2_score(y_gamma_smoothed, y_gamma_fitted)
         plt.plot(xdata, y_gamma_fitted, 'r-',
                  label=f'Регрессионная кривая.\nПараметры: {tuple(round(opt, 5) for opt in gamma_opt)}\n'
-                 f'R2 = {r2:.3f}')
+                 f'$R^2$ = {r2:.3f}')
         plt.legend()
         plt.title('Построение графика для параметра \u03B3')
         plt.xlabel('Дни')
@@ -210,7 +209,7 @@ def simulate_graphics(dataset: pd.DataFrame,
         r2 = r2_score(dataset['Infected'][simulation_x], simulated['Infected'])
         mape = mape_score(dataset['Infected'][simulation_x], simulated['Infected'])
         plt.plot(simulation_x, simulated['Infected'], 'r-',
-                 label=f'Симуляция\nR2 = {r2:.3f}\nMAPE = {mape:.2f}')
+                 label=f'Симуляция\n$R^2$ = {r2:.3f}\nMAPE = {mape:.2f}')
         plt.title(f'Симуляция с дня {training_range[1] + 1}')
         plt.xlabel('Дни')
         plt.ylabel('Количество инфицированных')
@@ -230,11 +229,14 @@ def multiple_simulate_graphics(dataset: pd.DataFrame,
                                smooth_points=5,
                                show_pictures=True,
                                return_result=True,
-                               restrict_y=True):
+                               restrict_y=False):
     """
-    !!! Реализовать вывод результата, м.б. одной циферкой.
+    Функция использует данные, полученные simulate_graphics,
+    для получения множества симуляций на одном графике для
+    разных отрезков времени.
+    Возвращаемый результат - средняя оценка R2 и MAPE.
     """
-    all_sim_data = {'x': [], 'y': []}
+    metrics = {'r2': [], 'mape': []}
     for training_end in range(first_training_end,
                               len(dataset) - cycles + 1,
                               training_end_increment):
@@ -247,26 +249,31 @@ def multiple_simulate_graphics(dataset: pd.DataFrame,
                                       smooth_points=smooth_points,
                                       show_pictures=False,
                                       return_result=True)
-        all_sim_data['y'].append(simulated['Infected'])
         simulation_x = np.arange(training_end + 1, training_end + 1 + cycles)
-        all_sim_data['x'].append(simulation_x)
-        if training_end == first_training_end:
-            label = 'Симуляция'
-        else:
-            label = None
-        plt.plot(simulation_x, simulated['Infected'], 'r-',
-                 label=label)
-    plt.plot(dataset.index, dataset['Infected'], label='Реальные данные')
-    plt.legend()
-    if restrict_y:
-        if type(restrict_y) in (int, float):
-            max_y = restrict_y
-        else:
-            max_y = dataset['Infected'].max() * 2
-        plt.ylim(top=max_y)
-    plt.xlabel('Дни')
-    plt.ylabel('Количество инфицированных')
-    plt.title(f'Множественная симуляция с дня {first_training_end + 1}')
-    plt.show()
+        r2 = r2_score(dataset['Infected'][simulation_x], simulated['Infected'])
+        mape = mape_score(dataset['Infected'][simulation_x], simulated['Infected'])
+        metrics['r2'].append(r2)
+        metrics['mape'].append(mape)
+        if show_pictures:
+            if training_end == first_training_end:
+                label = 'Симуляция'
+            else:
+                label = None
+            plt.plot(simulation_x, simulated['Infected'], 'r-',
+                     label=label)
+    if show_pictures:
+        plt.plot(dataset.index, dataset['Infected'], label='Реальные данные')
+        plt.legend()
+        if restrict_y:
+            if type(restrict_y) in (int, float):
+                max_y = restrict_y
+            else:
+                max_y = dataset['Infected'].max() * 2
+            plt.ylim(top=max_y)
+        plt.xlabel('Дни')
+        plt.ylabel('Количество инфицированных')
+        plt.title(f'Множественная симуляция с дня {first_training_end + 1}')
+        plt.show()
     if return_result:
-        return all_sim_data
+        result = {key: np.mean(val) for key, val in metrics.items()}
+        return result

@@ -4,6 +4,9 @@
 """
 import pandas as pd
 import os
+import tools
+import importlib
+importlib.reload(tools)
 from tools import add_stats, simulate_graphics
 
 # ---- Начальные параметры ----------------------
@@ -11,7 +14,7 @@ from tools import add_stats, simulate_graphics
 REGION = 'Москва'
 TO_SAVE = False  # сохранять ли промежуточные данные в excel
 SMOOTH_POINTS = 5
-LAST_TRAINING_POINT = 45
+LAST_TRAINING_POINT = 100
 CYCLES = 15
 source_folder = 'data/source'
 output_folder = 'data/output'

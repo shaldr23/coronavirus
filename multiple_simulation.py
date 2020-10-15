@@ -4,6 +4,9 @@
 """
 import pandas as pd
 import os
+import tools
+import importlib
+importlib.reload(tools)
 from tools import add_stats, multiple_simulate_graphics
 
 # ---- Начальные параметры ----------------------
@@ -32,8 +35,7 @@ if TO_SAVE:
 multiple_simulate_graphics(region_frame, region_population,
                            first_training_end=FIRST_TRAINING_END,
                            training_end_increment=TRAINING_END_INCREMENT,
-                           return_result=False,
-                           restrict_y=False,
+                           return_result=True,
                            smooth_points=SMOOTH_POINTS)
 
 # %%
