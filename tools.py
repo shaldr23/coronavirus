@@ -168,11 +168,11 @@ def simulate_graphics(dataset: pd.DataFrame,
         # График для Beta
         y_beta_fitted = beta_func(xdata, *beta_opt)
         r2 = r2_score(y_beta, y_beta_fitted)
-        plt.plot(xdata, y_beta, '-o', label='Реальные данные')
+        plt.plot(xdata, y_beta, '-o', color='darkgray', label='Реальные данные')
         if smooth_points:
-            plt.plot(xdata, y_beta_smoothed, label='Сглаженные данные')
+            plt.plot(xdata, y_beta_smoothed, 'k--', label='Сглаженные данные')
             r2 = r2_score(y_beta_smoothed, y_beta_fitted)
-        plt.plot(xdata, y_beta_fitted, 'r-',
+        plt.plot(xdata, y_beta_fitted, 'k-',
                  label=f'Регрессионная кривая.\nПараметры: {tuple(round(opt, 5) for opt in beta_opt)}\n'
                  f'$R^2$ = {r2:.3f}')
         plt.legend()
@@ -183,11 +183,11 @@ def simulate_graphics(dataset: pd.DataFrame,
         # График для Gamma
         y_gamma_fitted = gamma_func(xdata, *gamma_opt)
         r2 = r2_score(y_gamma, y_gamma_fitted)
-        plt.plot(xdata, y_gamma, '-o', label='Реальные данные')
+        plt.plot(xdata, y_gamma, '-o', color='darkgray', label='Реальные данные')
         if smooth_points:
-            plt.plot(xdata, y_gamma_smoothed, label='Сглаженные данные')
+            plt.plot(xdata, y_gamma_smoothed, 'k--', label='Сглаженные данные')
             r2 = r2_score(y_gamma_smoothed, y_gamma_fitted)
-        plt.plot(xdata, y_gamma_fitted, 'r-',
+        plt.plot(xdata, y_gamma_fitted, 'k-',
                  label=f'Регрессионная кривая.\nПараметры: {tuple(round(opt, 5) for opt in gamma_opt)}\n'
                  f'$R^2$ = {r2:.3f}')
         plt.legend()
@@ -205,10 +205,10 @@ def simulate_graphics(dataset: pd.DataFrame,
                                   cycles=cycles, start_time=start_sim_time)
     if show_pictures:
         simulation_x = np.arange(training_range[1] + 1, training_range[1] + 1 + cycles)
-        plt.plot(dataset.index, dataset['Infected'], label='Реальные данные')
+        plt.plot(dataset.index, dataset['Infected'], '-', color='grey', label='Реальные данные')
         r2 = r2_score(dataset['Infected'][simulation_x], simulated['Infected'])
         mape = mape_score(dataset['Infected'][simulation_x], simulated['Infected'])
-        plt.plot(simulation_x, simulated['Infected'], 'r-',
+        plt.plot(simulation_x, simulated['Infected'], 'k-',
                  label=f'Симуляция\n$R^2$ = {r2:.3f}\nMAPE = {mape:.2f}')
         plt.title(f'Симуляция с дня {training_range[1] + 1}')
         plt.xlabel('Дни')
@@ -259,10 +259,10 @@ def multiple_simulate_graphics(dataset: pd.DataFrame,
                 label = 'Симуляция'
             else:
                 label = None
-            plt.plot(simulation_x, simulated['Infected'], 'r-',
+            plt.plot(simulation_x, simulated['Infected'], color='grey',
                      label=label)
     if show_pictures:
-        plt.plot(dataset.index, dataset['Infected'], label='Реальные данные')
+        plt.plot(dataset.index, dataset['Infected'], 'k-', label='Реальные данные')
         plt.legend()
         if restrict_y:
             if type(restrict_y) in (int, float):

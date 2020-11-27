@@ -32,4 +32,4 @@ if TO_SAVE:
     region_frame.to_excel(os.path.join(output_folder, f'{REGION}.xlsx'))
 simulate_graphics(region_frame, region_population, (1, LAST_TRAINING_POINT),
                   cycles=CYCLES, smooth_points=SMOOTH_POINTS)
-# %%
+    # %%
