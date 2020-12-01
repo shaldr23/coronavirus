@@ -43,5 +43,3 @@ for num, region in enumerate(frame['Region/City'].unique(), start=1):
         print(f'Обработано {num} регионов.')
 scores_frame = pd.DataFrame(scores_list)
 scores_frame.to_excel(file_path)
-
-# %%

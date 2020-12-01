@@ -229,7 +229,8 @@ def multiple_simulate_graphics(dataset: pd.DataFrame,
                                smooth_points=5,
                                show_pictures=True,
                                return_result=True,
-                               restrict_y=False):
+                               restrict_y=False,
+                               title=None):
     """
     Функция использует данные, полученные simulate_graphics,
     для получения множества симуляций на одном графике для
@@ -272,7 +273,10 @@ def multiple_simulate_graphics(dataset: pd.DataFrame,
             plt.ylim(top=max_y)
         plt.xlabel('Дни')
         plt.ylabel('Количество инфицированных')
-        plt.title(f'Множественная симуляция с дня {first_training_end + 1}')
+        if not title:
+            plt.title(f'Множественная симуляция с дня {first_training_end + 1}')
+        else:
+            plt.title(title)
         plt.show()
     if return_result:
         result = {key: np.mean(val) for key, val in metrics.items()}

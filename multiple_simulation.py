@@ -11,7 +11,7 @@ from tools import add_stats, multiple_simulate_graphics
 
 # ---- Начальные параметры ----------------------
 
-REGION = 'Москва'
+REGION = 'Республика Калмыкия'
 TO_SAVE = False  # сохранять ли промежуточные данные в excel
 SMOOTH_POINTS = 5
 FIRST_TRAINING_END = 20
@@ -36,6 +36,5 @@ multiple_simulate_graphics(region_frame, region_population,
                            first_training_end=FIRST_TRAINING_END,
                            training_end_increment=TRAINING_END_INCREMENT,
                            return_result=True,
-                           smooth_points=SMOOTH_POINTS)
-
-# %%
+                           smooth_points=SMOOTH_POINTS,
+                           title=REGION)

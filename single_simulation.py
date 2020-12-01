@@ -14,7 +14,7 @@ from tools import add_stats, simulate_graphics
 REGION = 'Москва'
 TO_SAVE = False  # сохранять ли промежуточные данные в excel
 SMOOTH_POINTS = 5
-LAST_TRAINING_POINT = 100
+LAST_TRAINING_POINT = 20
 CYCLES = 15
 source_folder = 'data/source'
 output_folder = 'data/output'
@@ -32,4 +32,3 @@ if TO_SAVE:
     region_frame.to_excel(os.path.join(output_folder, f'{REGION}.xlsx'))
 simulate_graphics(region_frame, region_population, (1, LAST_TRAINING_POINT),
                   cycles=CYCLES, smooth_points=SMOOTH_POINTS)
-    # %%
